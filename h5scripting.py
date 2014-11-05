@@ -25,7 +25,7 @@ def add_data(filename, groupname, data):
         where the names Data1 and Data2 will be created created in group
     """
 
-    with h5py.File(filename, "r+") as f:
+    with h5py.File(filename) as f:
         try:
             del f[groupname]
         except KeyError:
@@ -93,15 +93,18 @@ class attach_function(object):
         # Return a wrapped version of the function that executes
         # in a restricted environment to ensure it doesn't have
         # dependencies on global or nonlocal variables:
-        return _create_sandboxed_callable(function_name, function_source)
+        return _create_sandboxed_callable(self.filename, function_name, function_source)
         
         
-def _create_sandboxed_callable(function_name, function_source):
+def _create_sandboxed_callable(filename, function_name, function_source):
     """
     Creates a callable function from the function name and source code.
     
     This callable executes in an empty namespace, and so does not have
     access to global and local variables in the calling scope.
+    
+    When called, it automatically receives 'filename' as its first
+    argument, other args and kwargs can be supplied by the caller.
     """
     
     import functools
@@ -114,9 +117,15 @@ def _create_sandboxed_callable(function_name, function_source):
     # in an empty namespace, so as to ensure it is self contained:
     @functools.wraps(function)
     def sandboxed_function(*args, **kwargs):
-        sandbox_namespace = {'function': function, 'args': args, 'kwargs': kwargs}
-        exec 'result = function(*args, **kwargs)' in sandbox_namespace
-        result = sandbox_namespace['result']
+        # Names mangled to reduce risk of colliding with the function
+        # attempting to access global variables (which it shouldn't be doing):
+        sandbox_namespace = {'__h5s_filename': filename,
+                             '__h5s_function': function,
+                             '__h5s_args': args,
+                             '__h5s_kwargs': kwargs}
+        exc_line = '__h5s_result = __h5s_function(__h5s_filename, *__h5s_args, **__h5s_kwargs)'
+        exec exc_line in sandbox_namespace
+        result = sandbox_namespace['__h5s_result']
         return result
     
     return sandboxed_function
@@ -143,51 +152,8 @@ def get_saved_function(filename, name, groupname='saved_functions'):
     with h5py.File(filename, "r") as f:
         group = f[groupname]
         dataset = group[name]
-        function_source = dataset[:]
+        function_source = dataset.value
         function_name = dataset.attrs['function_name']
-    sandboxed_function = _create_sandboxed_callable(function_name, function_source)
+    sandboxed_function = _create_sandboxed_callable(filename, function_name, function_source)
     return sandboxed_function
     
-
-if __name__ == '__main__':
-    # tests
-    
-    from pylab import *
-    
-    x = linspace(0,10,1000)
-    y = sin(x)
-    some_global = 5
-    
-    # make an h5 file to test on:
-    add_data('test.h5', 'data', dict(x=x, y=y))
-        
-    # test usage:
-    @attach_function('test.h5')
-    def foo(h5_filepath, try_to_access_global=False, **kwargs):
-        import h5py
-        import pylab as pl
-        with h5py.File(h5_filepath, 'r') as f:
-            x = f['/data/x'][:]
-            y = f['/data/y'][:]
-        pl.xlabel('kwargs are: %s'%str(kwargs))
-        pl.plot(x, y)
-        if try_to_access_global:
-            print(some_global)
-        return True
-    
-    # Test that we can call foo,
-    # that it returns the right value,
-    # and that we can show the plot:
-    assert foo('test.h5', x=5) == True
-    show()
-    
-    # Test we get an exception when trying
-    # to access a global from foo:
-    try:
-        foo('test.h5', try_to_access_global=True)
-    except NameError as e:
-        assert repr(e) == """NameError("global name 'some_global' is not defined",)"""
-    else:
-        raise AssertionError('should have gotten a name error')
-        
-    # Success!
