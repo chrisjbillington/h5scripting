@@ -10,9 +10,23 @@ to an h5 file and allowing these to be executed in a nice way.
 One intended use of this module is embedding the function needed to generate
 a plot from data within an h5 file.
 """
+import matplotlib
+matplotlib.use("QT4Agg")
 
+import sys
 import h5py
 
+def exec_in_namespace(code, namespace):
+    if sys.version < '3':
+        exec("""exec code in namespace""")
+    else:
+        if isinstance(__builtins__, dict):
+             exec_func = __builtins__['exec']
+        else:
+            exec_func = getattr(__builtins__, 'exec')
+        exec_func(code, namespace)
+    
+    
 def add_data(filename, groupname, data):
     """
     Adds data to a new or existing h5 file.
@@ -110,7 +124,7 @@ def _create_sandboxed_callable(filename, function_name, function_source):
     import functools
     # Exec the function definition to get the function object:
     sandbox_namespace = {}
-    exec function_source in sandbox_namespace
+    exec_in_namespace(function_source, sandbox_namespace)
     function = sandbox_namespace[function_name]
     
     # Define a wrapped version of the function that always executes
@@ -124,7 +138,7 @@ def _create_sandboxed_callable(filename, function_name, function_source):
                              '__h5s_args': args,
                              '__h5s_kwargs': kwargs}
         exc_line = '__h5s_result = __h5s_function(__h5s_filename, *__h5s_args, **__h5s_kwargs)'
-        exec exc_line in sandbox_namespace
+        exec_in_namespace(exc_line, sandbox_namespace)
         result = sandbox_namespace['__h5s_result']
         return result
     

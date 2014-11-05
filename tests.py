@@ -43,7 +43,8 @@ clf()
 try:
     foo(try_to_access_global=True)
 except NameError as e:
-    assert repr(e) == """NameError("global name 'some_global' is not defined",)"""
+    assert repr(e) in ["""NameError("name 'some_global' is not defined",)""",
+                       """NameError("global name 'some_global' is not defined",)"""]
 else:
     raise AssertionError('should have gotten a name error')
  
