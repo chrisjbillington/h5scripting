@@ -64,6 +64,10 @@ class attach_function(object):
         Defaults to None, in which case the function's name will be used.
         If the dataset exists it will be deleted first.
 
+    docstring : a string describing this function, or the data it is plotting
+        or whatever.  if this is None or not passed this is pulled from
+        the function's docstring.
+
     groupname : what group in the h5 file to save the dataset to.
         Defaults to 'saved_functions'.
 
@@ -71,10 +75,11 @@ class attach_function(object):
         an empty namespace.
     """
 
-    def __init__(self, filename, name=None, groupname='saved_functions'):
+    def __init__(self, filename, name=None, docstring=None, groupname='saved_functions'):
         self.name = name
         self.filename = filename
         self.groupname = groupname
+        self.docstring = docstring
 
     def __call__(self, function):
         import inspect
@@ -86,7 +91,11 @@ class attach_function(object):
 
         function_name = function.__name__
 
-        function_docstring = function.__doc__
+        if self.docstring is None:
+            function_docstring = function.__doc__
+        else:
+            function_docstring = self.docstring
+
         if function_docstring is None:
             function_docstring = ""
 
