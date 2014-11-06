@@ -78,7 +78,6 @@ class attach_function(object):
 
     def __call__(self, function):
         import inspect
-        import ast
 
         if self.name is None:
             name = function.__name__
@@ -86,6 +85,7 @@ class attach_function(object):
             name = self.name
 
         function_name = function.__name__
+        function_docstring = function.__doc__
         function_source = inspect.getsource(function)
 
         function_lines = function_source.splitlines()
@@ -104,6 +104,7 @@ class attach_function(object):
                 pass
             dataset = group.create_dataset(name, data=function_source)
             dataset.attrs['function_name'] = function_name
+            dataset.attrs['function_docstring'] = function_docstring
 
         # Return a wrapped version of the function that executes
         # in a restricted environment to ensure it doesn't have
@@ -171,3 +172,14 @@ def get_saved_function(filename, name, groupname='saved_functions'):
         function_name = dataset.attrs['function_name']
     sandboxed_function = _create_sandboxed_callable(filename, function_name, function_source)
     return sandboxed_function
+
+def list_saved_function(filename, groupname='saved_functions'):
+    """
+    Retruns all the saved functions in the group deined by groupname as 
+    a list of the form:
+    
+    [{"function": FunctionName, "docstring": FunctionDocString}, ...]
+    
+    This assumes that all of the datasets in groupname are saved functions.
+    """
+    pass
