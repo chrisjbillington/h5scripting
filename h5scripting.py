@@ -198,8 +198,9 @@ def list_saved_functions(filename, groupname='saved_functions'):
         for key in keys:
             dataset = group[key]
             saved_functions += [{
-                "function": dataset.attrs['function_name'],
-                "docstring": dataset.attrs['function_docstring'],
-                "signature": dataset.attrs['function_signature']},]
+                "function_name": dataset.attrs['function_name'],
+                "function_docstring": dataset.attrs['function_docstring'],
+                "function_signature": dataset.attrs['function_signature'],
+                "function_source": dataset.value},]
 
     return saved_functions
