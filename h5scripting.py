@@ -78,6 +78,7 @@ class attach_function(object):
 
     def __call__(self, function):
         import inspect
+        import ast
 
         if self.name is None:
             name = function.__name__
@@ -87,12 +88,12 @@ class attach_function(object):
         function_name = function.__name__
         function_source = inspect.getsource(function)
 
-        # Remove initial indentation, and this decorator (if present):
         function_lines = function_source.splitlines()
-        decorator_line = '@' + self.__class__.__name__
         indentation = min(len(line) - len(line.lstrip(' ')) for line in function_lines)
-        if function_lines[0][indentation:].startswith(decorator_line):
+        # Remove this decorator from the source, if present:
+        if function_lines[0][indentation:].startswith('@'):
             del function_lines[0]
+        # Remove initial indentation from the source:
         function_source = '\n'.join(line[indentation:] for line in function_lines)
 
         with h5py.File(self.filename) as f:
