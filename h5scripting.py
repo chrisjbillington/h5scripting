@@ -36,6 +36,9 @@ def add_data(filename, groupname, data):
 
     data : a dictionary such as {"Data1": DataObject1, "Data2": DataObject2, ...}
         where the names Data1 and Data2 will be created created in group
+        
+    Adds an attribute "__h5scripting" to all data added to allow for
+    safe batch readout of the data.
     """
 
     with h5py.File(filename) as f:
@@ -47,8 +50,25 @@ def add_data(filename, groupname, data):
         group = f.require_group(groupname)
 
         for key, val in data.items():
-            group.create_dataset(str(key), data=val, compression="gzip")
+            dataset = group.create_dataset(str(key), data=val, compression="gzip")
+            dataset.attrs['__h5scripting'] = True
 
+def get_data(filename, groupname, recursive = False):
+    """
+    Gets data from an existing h5 file.
+
+    filename : h5 file to use
+
+    groupname : group to use
+
+    recursive : search the data tree recursivly.
+    
+    only datasets with the "__h5scripting" attribute set to True are accepted
+
+    returns : a dictionary such as {"Data1": DataObject1, "Data2": DataObject2, ...}
+        where the names are the h5 dataset names.
+    """
+    pass
 
 class attach_function(object):
 
