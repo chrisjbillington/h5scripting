@@ -85,7 +85,11 @@ class attach_function(object):
             name = self.name
 
         function_name = function.__name__
+
         function_docstring = function.__doc__
+        if function_docstring is None:
+            function_docstring = ""
+        
         function_source = inspect.getsource(function)
 
         function_lines = function_source.splitlines()
@@ -173,7 +177,7 @@ def get_saved_function(filename, name, groupname='saved_functions'):
     sandboxed_function = _create_sandboxed_callable(filename, function_name, function_source)
     return sandboxed_function
 
-def list_saved_function(filename, groupname='saved_functions'):
+def list_saved_functions(filename, groupname='saved_functions'):
     """
     Retruns all the saved functions in the group deined by groupname as 
     a list of the form:
@@ -182,4 +186,15 @@ def list_saved_function(filename, groupname='saved_functions'):
     
     This assumes that all of the datasets in groupname are saved functions.
     """
-    pass
+    with h5py.File(filename, "r") as f:
+        group = f[groupname]
+        keys = group.keys()
+        
+        saved_functions = []
+        for key in keys:
+            dataset = group[key]
+            saved_functions += [{
+                "function": dataset.attrs['function_name'],
+                "docstring": dataset.attrs['function_docstring']},]
+    
+    return saved_functions
