@@ -1,4 +1,4 @@
-from h5scripting import add_data, attach_function, get_saved_function
+from h5scripting import add_data, attach_function, get_saved_function, list_saved_functions
 
 from pylab import *
 
@@ -57,3 +57,6 @@ retreived_plot_func = get_saved_function(h5_filename, 'plot_func')
 retreived_plot_func('testing calling plot_func retrieved from file', xlabel='x (units)')
 show()
 
+# print out the saved function:
+import pprint
+pprint.pprint(list_saved_functions(h5_filename))

@@ -89,7 +89,9 @@ class attach_function(object):
         function_docstring = function.__doc__
         if function_docstring is None:
             function_docstring = ""
-        
+
+        argspec = inspect.getargspec(function)
+        function_signature = function_name + inspect.formatargspec(*argspec)
         function_source = inspect.getsource(function)
 
         function_lines = function_source.splitlines()
@@ -109,6 +111,7 @@ class attach_function(object):
             dataset = group.create_dataset(name, data=function_source)
             dataset.attrs['function_name'] = function_name
             dataset.attrs['function_docstring'] = function_docstring
+            dataset.attrs['function_signature'] = function_signature
 
         # Return a wrapped version of the function that executes
         # in a restricted environment to ensure it doesn't have
@@ -177,6 +180,7 @@ def get_saved_function(filename, name, groupname='saved_functions'):
     sandboxed_function = _create_sandboxed_callable(filename, function_name, function_source)
     return sandboxed_function
 
+
 def list_saved_functions(filename, groupname='saved_functions'):
     """
     Retruns all the saved functions in the group deined by groupname as 
@@ -195,6 +199,7 @@ def list_saved_functions(filename, groupname='saved_functions'):
             dataset = group[key]
             saved_functions += [{
                 "function": dataset.attrs['function_name'],
-                "docstring": dataset.attrs['function_docstring']},]
-    
+                "docstring": dataset.attrs['function_docstring'],
+                "signature": dataset.attrs['function_signature']},]
+
     return saved_functions

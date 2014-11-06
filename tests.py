@@ -1,4 +1,4 @@
-from h5scripting import add_data, attach_function, get_saved_function
+from h5scripting import add_data, attach_function, get_saved_function, list_saved_functions
 
 from pylab import *
 
@@ -54,4 +54,5 @@ retreived_foo = get_saved_function(TEST_FILENAME, 'foo')
 assert retreived_foo(x=5) == True
 show()
 
-# Success!
+import pprint
+pprint.pprint(list_saved_functions(TEST_FILENAME))
