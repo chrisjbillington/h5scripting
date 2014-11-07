@@ -11,7 +11,10 @@ One intended use of this module is embedding the function needed to generate
 a plot from data within an h5 file.
 """
 
+import os
 import sys
+import ast
+
 import h5py
 
 
@@ -59,6 +62,7 @@ def add_data(filename, groupname, data, docstring = None):
             dataset = group.create_dataset(str(key), data=val, compression="gzip")
             dataset.attrs['__h5scripting'] = True
 
+            
 def get_data(filename, groupname, recursive = False):
     """
     Gets data from an existing h5 file.
@@ -122,7 +126,6 @@ class attached_function(object):
         
     def __call__(self, function):
         import inspect
-        import ast
         
         if self.name is None:
             name = function.__name__
@@ -187,10 +190,8 @@ class attached_function(object):
             dataset.attrs['function_args'] = function_args
             dataset.attrs['function_kwargs'] = function_kwargs
 
-        # Return a wrapped version of the function that executes
-        # in a restricted environment to ensure it doesn't have
-        # dependencies on global or nonlocal variables:
-        return _create_sandboxed_callable(self.filename, function_name, function_source, args, kwargs)
+            saved_function = SavedFunction(dataset)
+        return saved_function
 
 
 def attach_function(function, filename, name=None, docstring=None, groupname='saved_functions', args=None, kwargs=None):
@@ -210,69 +211,92 @@ def attach_function(function, filename, name=None, docstring=None, groupname='sa
         objects, C extensions etc, only ordinary Python functions.
     """
     decorator = attached_function(filename, name, docstring, groupname, args, kwargs)
-    sandboxed_fuction = attached_function(function)
-    return sandboxed_function
+    saved_function = attached_function(function)
+    return saved_function
  
- 
-def _create_sandboxed_callable(filename, function_name, function_source, args, kwargs):
-    """
-    Creates a callable function from the function name and source code.
 
-    This callable executes in an empty namespace, and so does not have
-    access to global and local variables in the calling scope.
+class SavedFunction(object):
+    def __init__(self, dataset):
+        """provides a callable from the function saved in the provided dataset.
+        
+        filename: The name of the (currently open) h5 file the 
+        
+        This callable executes in an empty namespace, and so does not have
+        access to global and local variables in the calling scope.
 
-    When called, it automatically receives 'filename' as its first
-    argument, args and kwargs as its arguments and keyword arguments.
-    """
-
-    import functools
-    # Exec the function definition to get the function object:
-    sandbox_namespace = {}
-    exec_in_namespace(function_source, sandbox_namespace)
-    function = sandbox_namespace[function_name]
-
-    # Define a wrapped version of the function that always executes
-    # in an empty namespace, so as to ensure it is self contained:
-    @functools.wraps(function)
-    def sandboxed_function():
+        When called, it automatically receives 'filename' as its first
+        argument, args and kwargs as its arguments and keyword arguments."""
+        
+        import functools
+        
+        function_source = dataset.value
+        function_name = dataset.attrs['function_name']
+        function_docstring = dataset.attrs['function_docstring']
+        function_signature = dataset.attrs['function_signature']
+        function_args = ast.literal_eval(dataset.attrs['function_args'])
+        function_kwargs = ast.literal_eval(dataset.attrs['function_kwargs'])
+        
+        # Exec the function definition to get the function object:
+        sandbox_namespace = {}
+        exec_in_namespace(function_source, sandbox_namespace)
+        function = sandbox_namespace[function_name]
+    
+        self.function = function
+        self.function_docstring = function_docstring
+        self.function_signature = function_signature
+        self.function_source = function_source
+        self.function_name = function_name
+        self.function_args = function_args
+        self.function_kwargs = function_kwargs
+        self.h5_filename = os.path.abspath(dataset.file.filename)
+        functools.update_wrapper(self, function)
+        
+    def __call__(self, *args, **kwargs):
+        """Calls the wrapped function in an empty namespace. Returns the result.
+        If args and kwargs are provided, these are passed to the function after the
+        h5_filepath argument. Otherwise the saved args and kwargs are used."""
+        
+        if not args:
+            args = self.function_args
+        if not kwargs:
+            kwargs = self.function_kwargs
+            
         # Names mangled to reduce risk of colliding with the function
         # attempting to access global variables (which it shouldn't be doing):
-        sandbox_namespace = {'__h5s_filename': filename,
-                             '__h5s_function': function,
+        sandbox_namespace = {'__h5s_filename': self.h5_filename,
+                             '__h5s_function': self.function,
                              '__h5s_args': args,
                              '__h5s_kwargs': kwargs}
         exc_line = '__h5s_result = __h5s_function(__h5s_filename, *__h5s_args, **__h5s_kwargs)'
         exec_in_namespace(exc_line, sandbox_namespace)
         result = sandbox_namespace['__h5s_result']
         return result
-
-    return sandboxed_function
-
-    
-def _extract_saved_function(filename, dataset):
-    """
-    Helper function to extract the saved function from an already open
-    h5 file
-    """
-
-    function_source = dataset.value
-    function_name = dataset.attrs['function_name']
-    function_docstring = dataset.attrs['function_docstring']
-    function_signature = dataset.attrs['function_signature']
-    function_args = ast.literal_eval(dataset.attrs['function_args'])
-    function_kwargs = ast.literal_eval(dataset.attrs['function_kwargs'])
-
-    saved_function = {
-        "function" : _create_sandboxed_callable(filename, function_name, function_source, function_args, function_kwargs),
-        "function_docstring": function_docstring,
-        "function_signature": function_signature,
-        "function_source": function_source,
-        "function_args": function_args,
-        "function_kwargs": function_kwargs}
-
-    return saved_function
-
-
+        
+    def __repr__(self):
+        """A pretty representation of the object that displays all public attributes"""
+        function_source = self.function_source.splitlines()[0]
+        if len(function_source) > 50:
+            function_source = function_source[:50] + '...'
+        function_docstring = self.function_docstring
+        if self.function_docstring:
+            function_docstring = str(self.function_docstring).splitlines()[0]
+            if len(function_docstring) > 50:
+                function_docstring = function_docstring[:50] + '...'
+        function_args = repr(self.function_args).splitlines()[0]
+        if len(function_args) > 50:
+            function_args = function_args[:50] + '...'
+        function_kwargs = repr(self.function_kwargs).splitlines()[0]
+        if len(function_kwargs) > 50:
+            function_kwargs = function_kwargs[:50] + '...'
+        return ('<%s:\n'%self.__class__.__name__ +
+                '    function_name=%s\n'%self.function_name + 
+                '    function_source=%s\n'%function_source +
+                '    function_docstring=%s\n'%function_docstring + 
+                '    function_args=%s\n'%function_args + 
+                '    function_kwargs=%s\n'%function_kwargs + 
+                '    h5_filename=%s\n'%self.h5_filename) 
+        
+        
 def get_saved_function(filename, name, groupname='saved_functions'):
     """
     Retrieves a previously saved function from the h5 file.
@@ -301,7 +325,7 @@ def get_saved_function(filename, name, groupname='saved_functions'):
     with h5py.File(filename, "r") as f:
         group = f[groupname]
         dataset = group[name]
-        saved_function = _extract_saved_function(filename, dataset)
+        saved_function = SavedFunction(dataset)
     
     return saved_function
 
@@ -326,7 +350,7 @@ def get_all_saved_functions(filename, groupname='saved_functions'):
         saved_functions = {}
         for key in keys:
             dataset = group[key]
-            saved_function = _extract_saved_function(filename, dataset)
+            saved_function = SavedFunction(dataset)
             saved_functions[key] = saved_function
 
     return saved_functions

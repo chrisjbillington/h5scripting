@@ -1,4 +1,4 @@
-from h5scripting import add_data, attach_function, get_saved_function, list_saved_functions
+from h5scripting import add_data, attached_function, get_saved_function, get_all_saved_functions
 
 from pylab import *
 
@@ -22,7 +22,7 @@ add_data(h5_filename, 'data', dict(x=x, y=y))
 # This decorator modifies the function to receive the h5 filename as its
 # first argument, and to execute in an empty namespace.
 
-@attach_function(h5_filename)
+@attached_function(h5_filename, args=['testing calling plot_func with saved args'], kwargs={'xlabel': 'this is a saved keyword arg'})
 def plot_func(h5_filename, title, xlabel='xlabel'):
     import h5py
     import pylab as pl
@@ -42,8 +42,8 @@ def plot_func(h5_filename, title, xlabel='xlabel'):
 
 # Call plot_func directly. We don't provide the first
 # argument, the h5 filename, as it is provided automatically:
-plot_func('testing calling plot_func directly',xlabel='x (units)')
-show()
+plot_func()
+#show()
 clf()
 
 
@@ -54,9 +54,9 @@ retreived_plot_func = get_saved_function(h5_filename, 'plot_func')
 
 # Call the retrieved function. Again, we don't provide the first
 # argument:
-retreived_plot_func('testing calling plot_func retrieved from file', xlabel='x (units)')
-show()
+retreived_plot_func('testing calling plot_func with custom args', xlabel='this is a custom keyword arg')
+#show()
 
 # print out the saved function:
 import pprint
-pprint.pprint(list_saved_functions(h5_filename))
+pprint.pprint(get_all_saved_functions(h5_filename))
