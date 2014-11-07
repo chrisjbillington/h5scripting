@@ -13,7 +13,7 @@ a plot from data within an h5 file.
 
 import sys
 import h5py
-
+import ast
 
 def exec_in_namespace(code, namespace):
     if sys.version < '3':
@@ -223,6 +223,8 @@ def _create_sandboxed_callable(filename, function_name, function_source, args, k
 
     When called, it automatically receives 'filename' as its first
     argument, args and kwargs as its arguments and keyword arguments.
+    
+    It can accept further keyword arguments as well when called, but 
     """
 
     import functools
@@ -234,13 +236,16 @@ def _create_sandboxed_callable(filename, function_name, function_source, args, k
     # Define a wrapped version of the function that always executes
     # in an empty namespace, so as to ensure it is self contained:
     @functools.wraps(function)
-    def sandboxed_function():
+    def sandboxed_function(**passed_kwargs):
         # Names mangled to reduce risk of colliding with the function
         # attempting to access global variables (which it shouldn't be doing):
+        sandbox_kwargs = {}
+        sandbox_kwargs.update(kwargs)
+        sandbox_kwargs.update(passed_kwargs)
         sandbox_namespace = {'__h5s_filename': filename,
                              '__h5s_function': function,
                              '__h5s_args': args,
-                             '__h5s_kwargs': kwargs}
+                             '__h5s_kwargs': sandbox_kwargs}
         exc_line = '__h5s_result = __h5s_function(__h5s_filename, *__h5s_args, **__h5s_kwargs)'
         exec_in_namespace(exc_line, sandbox_namespace)
         result = sandbox_namespace['__h5s_result']
