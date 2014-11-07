@@ -121,6 +121,8 @@ class attach_function(object):
             function_docstring = (
                 "\n----- DATA DOCSTRING -----\n" +
                 self.docstring)
+        else:
+             function_docstring = ""
         
         function_docstring += (
                 "\n----- FUNCTION DOCSTRING -----\n" + 
@@ -192,6 +194,24 @@ def _create_sandboxed_callable(filename, function_name, function_source):
 
     return sandboxed_function
 
+def _extract_saved_function(filename, dataset):
+    """
+    Helper function to extract the saved function from an already open
+    h5 file
+    """
+
+    function_source = dataset.value
+    function_name = dataset.attrs['function_name']
+    function_docstring = dataset.attrs['function_docstring']
+    function_signature = dataset.attrs['function_signature']      
+
+    saved_function = {
+        "function" : _create_sandboxed_callable(filename, function_name, function_source),
+        "function_docstring": function_docstring,
+        "function_signature": function_signature,
+        "function_source": function_source}
+
+    return saved_function
 
 def get_saved_function(filename, name, groupname='saved_functions'):
     """
@@ -209,23 +229,33 @@ def get_saved_function(filename, name, groupname='saved_functions'):
         itself.
 
     groupname : the group in the h5 file to which the function is saved.
-        Defaults to 'saved_functions'.
+        Defaults to 'saved_functions'
+        
+    returns {
+        "function": Function, 
+        "function_docstring": FunctionDocString,
+        "function_signature": FunctionSignature,
+        "function_source" : FunctionSource}
     """
+
     with h5py.File(filename, "r") as f:
         group = f[groupname]
         dataset = group[name]
-        function_source = dataset.value
-        function_name = dataset.attrs['function_name']
-    sandboxed_function = _create_sandboxed_callable(filename, function_name, function_source)
-    return sandboxed_function
+        saved_function = _extract_saved_function(filename, dataset)
+    
+    return saved_function
 
 
-def list_saved_functions(filename, groupname='saved_functions'):
+def get_all_saved_functions(filename, groupname='saved_functions'):
     """
     Retruns all the saved functions in the group deined by groupname as 
-    a list of the form:
+    a dictionary of the form:
     
-    [{"function": FunctionName, "docstring": FunctionDocString}, ...]
+    {"function_name": {
+        "function": Function, 
+        "function_docstring": FunctionDocString,
+        "function_signature": FunctionSignature,
+        "function_source" : FunctionSource}, ...}
     
     This assumes that all of the datasets in groupname are saved functions.
     """
@@ -233,13 +263,10 @@ def list_saved_functions(filename, groupname='saved_functions'):
         group = f[groupname]
         keys = group.keys()
         
-        saved_functions = []
+        saved_functions = {}
         for key in keys:
             dataset = group[key]
-            saved_functions += [{
-                "function_name": dataset.attrs['function_name'],
-                "function_docstring": dataset.attrs['function_docstring'],
-                "function_signature": dataset.attrs['function_signature'],
-                "function_source": dataset.value},]
+            saved_function = _extract_saved_function(filename, dataset)
+            saved_functions[key] = saved_function
 
     return saved_functions
