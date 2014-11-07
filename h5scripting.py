@@ -253,14 +253,18 @@ class SavedFunction(object):
         
     def __call__(self, *args, **kwargs):
         """Calls the wrapped function in an empty namespace. Returns the result.
-        If args and kwargs are provided, these are passed to the function after the
-        h5_filepath argument. Otherwise the saved args and kwargs are used."""
-        
-        if not args:
-            args = self.function_args
-        if not kwargs:
-            kwargs = self.function_kwargs
+        If keyword arguments are provided, these override the saved keyword arguments.
+        Positional arguiments cannot be overridden, please use custom_call() for that.."""
+        if args:
+            message = ("To call this SavedFunction with custom positional arguments, please call  the custom_call()', " +
+                       "method, passing in all desired arguments and keyword arguments.")
+            raise TypeError(message)
+        sandbox_kwargs = self.function_kwargs.copy()
+        sandbox_kwargs.update(kwargs)
+        return self.custom_call(*self.function_args, **sandbox_kwargs)
             
+    def custom_call(self, *args, **kwargs):
+        """Call the wrapped function with custom positional and keyword arguments."""
         # Names mangled to reduce risk of colliding with the function
         # attempting to access global variables (which it shouldn't be doing):
         sandbox_namespace = {'__h5s_filename': self.h5_filename,

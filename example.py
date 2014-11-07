@@ -54,7 +54,7 @@ retreived_plot_func = get_saved_function(h5_filename, 'plot_func')
 
 # Call the retrieved function. Again, we don't provide the first
 # argument:
-retreived_plot_func('testing calling plot_func with custom args', xlabel='this is a custom keyword arg')
+retreived_plot_func(xlabel='this is a custom keyword arg')
 #show()
 
 # print out the saved function:
