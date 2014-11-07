@@ -26,7 +26,7 @@ def exec_in_namespace(code, namespace):
         exec_func(code, namespace)
 
 
-def add_data(filename, groupname, data):
+def add_data(filename, groupname, data, docstring = None):
     """
     Adds data to a new or existing h5 file.
 
@@ -36,7 +36,11 @@ def add_data(filename, groupname, data):
 
     data : a dictionary such as {"Data1": DataObject1, "Data2": DataObject2, ...}
         where the names Data1 and Data2 will be created created in group
-        
+    
+    docstring : if passed, will be added as an attribute to the group
+        this is intended to be a string note describing the contents
+        of a folder, for example,  but it could be anything.
+    
     Adds an attribute "__h5scripting" to all data added to allow for
     safe batch readout of the data.
     """
@@ -48,6 +52,8 @@ def add_data(filename, groupname, data):
             pass
 
         group = f.require_group(groupname)
+        if docstring is not None:
+            group.attrs['group_docstring'] = docstring
 
         for key, val in data.items():
             dataset = group.create_dataset(str(key), data=val, compression="gzip")
@@ -111,10 +117,14 @@ class attach_function(object):
 
         function_name = function.__name__
 
-        if self.docstring is None:
-            function_docstring = function.__doc__
-        else:
-            function_docstring = self.docstring
+        if self.docstring is not None:
+            function_docstring = (
+                "\n----- DATA DOCSTRING -----\n" +
+                self.docstring)
+        
+        function_docstring += (
+                "\n----- FUNCTION DOCSTRING -----\n" + 
+                function.__doc__)
 
         if function_docstring is None:
             function_docstring = ""
