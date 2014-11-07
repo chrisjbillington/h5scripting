@@ -76,15 +76,18 @@ def get_data(filename, groupname, recursive = False):
     """
     pass
 
-class attach_function(object):
+    
+class attached_function(object):
 
     """
-    Saves the source of the function to an h5 file.
+    Decorator that saves the decorated function to an h5 file.
 
     A function decorator that saves the source of the decorated function
-    as a dataset within the hdf5 file.
+    as a dataset within the hdf5 file, along with other data for how the
+    function should be called.
 
-    filename : h5 file to use
+    filename : h5 file to use. This will be passed to automatically
+        to the saved function as its first argument.
 
     name : what to call the dataset to which the source is saved.
         Defaults to None, in which case the function's name will be used.
@@ -96,20 +99,31 @@ class attach_function(object):
 
     groupname : what group in the h5 file to save the dataset to.
         Defaults to 'saved_functions'.
+        
+    args : list or tuple of arguments that will be automatically passed
+        to the function, after the filename argument.
+        
+    kwargs: dictionary of keyword arguments that will be automatically passed
+        to the function.
 
     note: function should be written assuming that it enters life in
-        an empty namespace.
+        an empty namespace. This decorator modifies the defined function
+        to run in an empty namespace, and to be called with the provided
+        arguments and keyword arguments.
     """
 
-    def __init__(self, filename, name=None, docstring=None, groupname='saved_functions'):
+    def __init__(self, filename, name=None, docstring=None, groupname='saved_functions', args=None, kwargs=None):
         self.name = name
         self.filename = filename
         self.groupname = groupname
         self.docstring = docstring
-
+        self.args = args
+        self.kwargs = kwargs
+        
     def __call__(self, function):
         import inspect
-
+        import ast
+        
         if self.name is None:
             name = function.__name__
         else:
@@ -124,17 +138,34 @@ class attach_function(object):
         else:
              function_docstring = ""
         
-        function_docstring += (
-                "\n----- FUNCTION DOCSTRING -----\n" + 
-                function.__doc__)
+        if function.__doc__ is not None:
+            function_docstring += (
+                    "\n----- FUNCTION DOCSTRING -----\n" + 
+                    function.__doc__)
 
         if function_docstring is None:
             function_docstring = ""
 
+        if self.args is None:
+            args = []
+        else:
+            args = self.args
+        function_args = repr(args)
+        if not ast.literal_eval(function_args) == args:
+            raise ValueError('Argument list can contain only Python literals')
+        
+        if self.kwargs is None:
+            kwargs = {}
+        else:
+            kwargs = self.kwargs
+        function_kwargs = repr(kwargs)
+        if not ast.literal_eval(function_kwargs) == kwargs:
+            raise ValueError('Keyword argument list can contain only Python literals')
+            
         argspec = inspect.getargspec(function)
         function_signature = function_name + inspect.formatargspec(*argspec)
         function_source = inspect.getsource(function)
-
+        
         function_lines = function_source.splitlines()
         indentation = min(len(line) - len(line.lstrip(' ')) for line in function_lines)
         # Remove this decorator from the source, if present:
@@ -153,14 +184,37 @@ class attach_function(object):
             dataset.attrs['function_name'] = function_name
             dataset.attrs['function_docstring'] = function_docstring
             dataset.attrs['function_signature'] = function_signature
+            dataset.attrs['function_args'] = function_args
+            dataset.attrs['function_kwargs'] = function_kwargs
 
         # Return a wrapped version of the function that executes
         # in a restricted environment to ensure it doesn't have
         # dependencies on global or nonlocal variables:
-        return _create_sandboxed_callable(self.filename, function_name, function_source)
+        return _create_sandboxed_callable(self.filename, function_name, function_source, args, kwargs)
 
 
-def _create_sandboxed_callable(filename, function_name, function_source):
+def attach_function(function, filename, name=None, docstring=None, groupname='saved_functions', args=None, kwargs=None):
+    """
+    Saves the source of a function to an h5 file.
+
+    This is exactly the same as the attached_function decorator, except
+    that one passes in the function to be saved as the firt argument instead
+    of decorating its definition. Returns the sandboxed version of the function.
+    
+    function : The function to save
+
+    All other arguments are the same as in the attached_function decorator.
+    
+    note: The function's source code must be self contained and introspectable
+        by Python, that means no lambdas, class/instance methods, functools.partial
+        objects, C extensions etc, only ordinary Python functions.
+    """
+    decorator = attached_function(filename, name, docstring, groupname, args, kwargs)
+    sandboxed_fuction = attached_function(function)
+    return sandboxed_function
+ 
+ 
+def _create_sandboxed_callable(filename, function_name, function_source, args, kwargs):
     """
     Creates a callable function from the function name and source code.
 
@@ -168,7 +222,7 @@ def _create_sandboxed_callable(filename, function_name, function_source):
     access to global and local variables in the calling scope.
 
     When called, it automatically receives 'filename' as its first
-    argument, other args and kwargs can be supplied by the caller.
+    argument, args and kwargs as its arguments and keyword arguments.
     """
 
     import functools
@@ -180,7 +234,7 @@ def _create_sandboxed_callable(filename, function_name, function_source):
     # Define a wrapped version of the function that always executes
     # in an empty namespace, so as to ensure it is self contained:
     @functools.wraps(function)
-    def sandboxed_function(*args, **kwargs):
+    def sandboxed_function():
         # Names mangled to reduce risk of colliding with the function
         # attempting to access global variables (which it shouldn't be doing):
         sandbox_namespace = {'__h5s_filename': filename,
@@ -194,6 +248,7 @@ def _create_sandboxed_callable(filename, function_name, function_source):
 
     return sandboxed_function
 
+    
 def _extract_saved_function(filename, dataset):
     """
     Helper function to extract the saved function from an already open
@@ -203,19 +258,24 @@ def _extract_saved_function(filename, dataset):
     function_source = dataset.value
     function_name = dataset.attrs['function_name']
     function_docstring = dataset.attrs['function_docstring']
-    function_signature = dataset.attrs['function_signature']      
+    function_signature = dataset.attrs['function_signature']
+    function_args = ast.literal_eval(dataset.attrs['function_args'])
+    function_kwargs = ast.literal_eval(dataset.attrs['function_kwargs'])
 
     saved_function = {
-        "function" : _create_sandboxed_callable(filename, function_name, function_source),
+        "function" : _create_sandboxed_callable(filename, function_name, function_source, function_args, function_kwargs),
         "function_docstring": function_docstring,
         "function_signature": function_signature,
-        "function_source": function_source}
+        "function_source": function_source,
+        "function_args": function_args,
+        "function_kwargs": function_kwargs}
 
     return saved_function
 
+
 def get_saved_function(filename, name, groupname='saved_functions'):
     """
-    Retrieves a previouslt saved function from the h5 file.
+    Retrieves a previously saved function from the h5 file.
 
     The function is returned as a callable that will run in an
     empty namespace with no access to global or local variables

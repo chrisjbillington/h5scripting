@@ -1,4 +1,4 @@
-from h5scripting import add_data, attach_function, get_saved_function, list_saved_functions
+from h5scripting import add_data, attached_function, get_saved_function, get_all_saved_functions
 
 from pylab import *
 
@@ -17,7 +17,7 @@ add_data(TEST_FILENAME, 'data', dict(x=x, y=y))
 # Save a function to the h5 file (leaving default name and group kwargs).
 # This decorator modifies the function to receive the h5 filepath as its
 # first argument, and to execute in an empty namespace.
-@attach_function(TEST_FILENAME)
+@attached_function(TEST_FILENAME)
 def foo(h5_filepath, try_to_access_global=False, **kwargs):
     import h5py
     import pylab as pl
@@ -55,4 +55,4 @@ assert retreived_foo(x=5) == True
 show()
 
 import pprint
-pprint.pprint(list_saved_functions(TEST_FILENAME))
+pprint.pprint(get_all_saved_functions(TEST_FILENAME))
