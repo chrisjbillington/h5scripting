@@ -60,7 +60,7 @@ def add_data(filename, groupname, data, docstring = None):
 
         for key, val in data.items():
             dataset = group.create_dataset(str(key), data=val, compression="gzip")
-            dataset.attrs['__h5scripting'] = True
+            dataset.attrs['__h5scripting_data'] = True
 
             
 def get_data(filename, groupname, recursive = False):
@@ -78,7 +78,11 @@ def get_data(filename, groupname, recursive = False):
     returns : a dictionary such as {"Data1": DataObject1, "Data2": DataObject2, ...}
         where the names are the h5 dataset names.
     """
-    pass
+    #TODO: run this check on each dataset:
+    #if '__h5scripting_data' in dataset.attrs and dataset.attrs['__h5scripting_data']):
+    #    # Yep, it's a dataset we saved
+    #
+    raise NotImplementedError('Not written yet')
 
     
 class attached_function(object):
@@ -189,7 +193,8 @@ class attached_function(object):
             dataset.attrs['function_signature'] = function_signature
             dataset.attrs['function_args'] = function_args
             dataset.attrs['function_kwargs'] = function_kwargs
-
+            dataset.attrs['__h5scripting'] = True
+            
             saved_function = SavedFunction(dataset)
         return saved_function
 
@@ -241,7 +246,7 @@ class SavedFunction(object):
         exec_in_namespace(function_source, sandbox_namespace)
         function = sandbox_namespace[function_name]
     
-        self.function = function
+        self._function = function
         self.function_docstring = function_docstring
         self.function_signature = function_signature
         self.function_source = function_source
@@ -268,7 +273,7 @@ class SavedFunction(object):
         # Names mangled to reduce risk of colliding with the function
         # attempting to access global variables (which it shouldn't be doing):
         sandbox_namespace = {'__h5s_filename': self.h5_filename,
-                             '__h5s_function': self.function,
+                             '__h5s_function': self._function,
                              '__h5s_args': args,
                              '__h5s_kwargs': kwargs}
         exc_line = '__h5s_result = __h5s_function(__h5s_filename, *__h5s_args, **__h5s_kwargs)'
@@ -329,6 +334,8 @@ def get_saved_function(filename, name, groupname='saved_functions'):
     with h5py.File(filename, "r") as f:
         group = f[groupname]
         dataset = group[name]
+        if '__h5scripting_function' not in dataset.attrs or not dataset.attrs['__h5scripting_function']):
+            raise ValueError('Specified dataset does not represent a function saved with h5scripting.')
         saved_function = SavedFunction(dataset)
     
     return saved_function

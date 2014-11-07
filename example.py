@@ -43,7 +43,7 @@ def plot_func(h5_filename, title, xlabel='xlabel'):
 # Call plot_func directly. We don't provide the first
 # argument, the h5 filename, as it is provided automatically:
 plot_func()
-#show()
+show()
 clf()
 
 
@@ -55,7 +55,7 @@ retreived_plot_func = get_saved_function(h5_filename, 'plot_func')
 # Call the retrieved function. Again, we don't provide the first
 # argument:
 retreived_plot_func(xlabel='this is a custom keyword arg')
-#show()
+show()
 
 # print out the saved function:
 import pprint
