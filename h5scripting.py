@@ -193,7 +193,7 @@ class attached_function(object):
             dataset.attrs['function_signature'] = function_signature
             dataset.attrs['function_args'] = function_args
             dataset.attrs['function_kwargs'] = function_kwargs
-            dataset.attrs['__h5scripting'] = True
+            dataset.attrs['__h5scripting_function'] = True
             
             saved_function = SavedFunction(dataset)
         return saved_function
@@ -215,8 +215,8 @@ def attach_function(function, filename, name=None, docstring=None, groupname='sa
         by Python, that means no lambdas, class/instance methods, functools.partial
         objects, C extensions etc, only ordinary Python functions.
     """
-    decorator = attached_function(filename, name, docstring, groupname, args, kwargs)
-    saved_function = attached_function(function)
+    attacher = attached_function(filename, name, docstring, groupname, args, kwargs)
+    saved_function = attacher(function)
     return saved_function
  
 
@@ -303,7 +303,7 @@ class SavedFunction(object):
                 '    function_docstring=%s\n'%function_docstring + 
                 '    function_args=%s\n'%function_args + 
                 '    function_kwargs=%s\n'%function_kwargs + 
-                '    h5_filename=%s\n'%self.h5_filename) 
+                '    h5_filename=%s>'%self.h5_filename) 
         
         
 def get_saved_function(filename, name, groupname='saved_functions'):
@@ -318,8 +318,8 @@ def get_saved_function(filename, name, groupname='saved_functions'):
 
     name : the name of the dataset to which the function is saved.
         if this was not set when saving the function with
-        attach_function(), then this is the name of the function
-        itself.
+        attach_function() or attached_function(), then this
+        is the name of the function itself.
 
     groupname : the group in the h5 file to which the function is saved.
         Defaults to 'saved_functions'
@@ -334,7 +334,7 @@ def get_saved_function(filename, name, groupname='saved_functions'):
     with h5py.File(filename, "r") as f:
         group = f[groupname]
         dataset = group[name]
-        if '__h5scripting_function' not in dataset.attrs or not dataset.attrs['__h5scripting_function']):
+        if '__h5scripting_function' not in dataset.attrs or not dataset.attrs['__h5scripting_function']:
             raise ValueError('Specified dataset does not represent a function saved with h5scripting.')
         saved_function = SavedFunction(dataset)
     
