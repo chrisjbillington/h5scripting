@@ -24,14 +24,14 @@ add_data(h5_filename, 'data', dict(x=x, y=y))
 
 @attached_function(h5_filename, args=['testing calling plot_func with saved args'], kwargs={'xlabel': 'this is a saved keyword arg'})
 def plot_func(h5_filename, title, xlabel='xlabel'):
-    import h5py
+    import h5scripting
     import pylab as pl
-    with h5py.File(h5_filename, 'r') as f:
-        x = f['/data/x'][:]
-        y = f['/data/y'][:]
+    
+    data = h5scripting.get_data(h5_filename)  
+    
     pl.title(title)
     pl.xlabel(xlabel)
-    pl.plot(x, y)
+    pl.plot(data['x'], data['y'])
     return True
 
     
