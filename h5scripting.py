@@ -63,26 +63,31 @@ def add_data(filename, groupname, data, docstring = None):
             dataset.attrs['__h5scripting_data'] = True
 
             
-def get_data(filename, groupname, recursive = False):
+def get_data(filename, groupname):
     """
     Gets data from an existing h5 file.
 
     filename : h5 file to use
 
     groupname : group to use
-
-    recursive : search the data tree recursivly.
     
-    only datasets with the "__h5scripting" attribute set to True are accepted
+    only datasets with the "__h5scripting_data" attribute set to True are accepted
 
     returns : a dictionary such as {"Data1": DataObject1, "Data2": DataObject2, ...}
         where the names are the h5 dataset names.
     """
-    #TODO: run this check on each dataset:
-    #if '__h5scripting_data' in dataset.attrs and dataset.attrs['__h5scripting_data']):
-    #    # Yep, it's a dataset we saved
-    #
-    raise NotImplementedError('Not written yet')
+
+    h5data = {}
+    with h5py.File(filename, 'r') as f:
+        grp = f[groupname]
+        for dataset in grp.values():
+            # First check that this is a valid data.
+            if '__h5scripting_data' in dataset.attrs and dataset.attrs['__h5scripting_data']:
+                key = dataset.name
+                key = key.split("/")[-1]
+                h5data[key] = dataset.value
+
+    return h5data
 
     
 class attached_function(object):
@@ -324,11 +329,7 @@ def get_saved_function(filename, name, groupname='saved_functions'):
     groupname : the group in the h5 file to which the function is saved.
         Defaults to 'saved_functions'
         
-    returns {
-        "function": Function, 
-        "function_docstring": FunctionDocString,
-        "function_signature": FunctionSignature,
-        "function_source" : FunctionSource}
+    returns saved_function
     """
 
     with h5py.File(filename, "r") as f:
@@ -343,14 +344,10 @@ def get_saved_function(filename, name, groupname='saved_functions'):
 
 def get_all_saved_functions(filename, groupname='saved_functions'):
     """
-    Retruns all the saved functions in the group deined by groupname as 
-    a dictionary of the form:
+    returns all the saved functions in the group deined by groupname as 
+    a list of the form:
     
-    {"function_name": {
-        "function": Function, 
-        "function_docstring": FunctionDocString,
-        "function_signature": FunctionSignature,
-        "function_source" : FunctionSource}, ...}
+    [saved_function, ]
     
     This assumes that all of the datasets in groupname are saved functions.
     """
@@ -358,10 +355,11 @@ def get_all_saved_functions(filename, groupname='saved_functions'):
         group = f[groupname]
         keys = group.keys()
         
-        saved_functions = {}
+        saved_functions = []
         for key in keys:
             dataset = group[key]
-            saved_function = SavedFunction(dataset)
-            saved_functions[key] = saved_function
+            if '__h5scripting_function' in dataset.attrs and dataset.attrs['__h5scripting_function']:
+                saved_functions += [SavedFunction(dataset),]
 
     return saved_functions
+
