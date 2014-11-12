@@ -308,8 +308,28 @@ class SavedFunction(object):
                 '    function_docstring=%s\n'%function_docstring + 
                 '    function_args=%s\n'%function_args + 
                 '    function_kwargs=%s\n'%function_kwargs + 
-                '    h5_filename=%s>'%self.h5_filename) 
+                '    h5_filename=%s>'%self.h5_filename)
+                
+    def do_all(self):
+        """
+        evaluates the function and also plots relevant data
+        """
         
+        sep = "-"
+        for x in range(80): sep += "-"
+        
+        print(sep)
+        print(sep)
+        print(self.function_name)
+        print(sep)
+        print(sep)
+        print(self.function_docstring)
+        print(sep)
+        print(self.function_source)
+        print(sep)
+        self()
+        print(sep)
+
         
 def get_saved_function(filename, name, groupname='saved_functions'):
     """
