@@ -252,6 +252,7 @@ class SavedFunction(object):
         function = sandbox_namespace[function_name]
     
         self._function = function
+        self.name = dataset.name
         self.function_docstring = function_docstring
         self.function_signature = function_signature
         self.function_source = function_source
@@ -303,6 +304,7 @@ class SavedFunction(object):
         if len(function_kwargs) > 50:
             function_kwargs = function_kwargs[:50] + '...'
         return ('<%s:\n'%self.__class__.__name__ +
+                '    name=%s\n'%self.name +
                 '    function_name=%s\n'%self.function_name + 
                 '    function_source=%s\n'%function_source +
                 '    function_docstring=%s\n'%function_docstring + 
@@ -320,7 +322,7 @@ class SavedFunction(object):
         
         print(sep)
         print(sep)
-        print(self.function_name)
+        print(self.name)
         print(sep)
         print(sep)
         print(self.function_docstring)
@@ -328,7 +330,7 @@ class SavedFunction(object):
         print(self.function_source)
         print(sep)
         self()
-        print(sep)
+        print(sep + "\n")
 
         
 def get_saved_function(filename, name, groupname='saved_functions'):
