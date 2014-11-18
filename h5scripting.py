@@ -162,22 +162,34 @@ class attached_function(object):
             args = []
         else:
             args = self.args
+        if not (isinstance(args, list) or isinstance(args, tuple)):
+            raise TypeError('args must be a list or a tuple')
         function_args = repr(args)
-        if not ast.literal_eval(function_args) == args:
+        try:
+            assert ast.literal_eval(function_args) == args
+        except Exception:
             raise ValueError('Argument list can contain only Python literals')
         
         if self.kwargs is None:
             kwargs = {}
         else:
             kwargs = self.kwargs
+        if not isinstance(kwargs, dict):
+            raise TypeError('kwargs must be a dictionary')
         function_kwargs = repr(kwargs)
-        if not ast.literal_eval(function_kwargs) == kwargs:
-            raise ValueError('Keyword argument list can contain only Python literals')
+        try:
+            assert ast.literal_eval(function_kwargs) == kwargs
+        except Exception:
+            raise TypeError('Keyword argument list can contain only Python literals')
             
         argspec = inspect.getargspec(function)
         function_signature = function_name + inspect.formatargspec(*argspec)
-        function_source = inspect.getsource(function)
-        
+        try:
+            function_source = inspect.getsource(function)
+        except Exception:
+            raise TypeError('Could not get source code of %s %s. '%(type(function).__name__, repr(function)) + 
+                            'Only ordinary Python functions defined in Python source code can be saved.')
+            
         function_lines = function_source.splitlines()
         indentation = min(len(line) - len(line.lstrip(' ')) for line in function_lines)
         # Remove this decorator from the source, if present:
