@@ -425,7 +425,7 @@ class attached_function(object):
 
         if self.docstring is not None:
             function_docstring = (
-                "\n----- DATA DOCSTRING -----\n" +
+                "\n----- ADDITIONAL DOCSTRING -----\n" +
                 self.docstring)
         else:
              function_docstring = ""
@@ -663,16 +663,53 @@ def get_all_saved_functions(filename, groupname='saved_functions'):
     
     This assumes that all of the datasets in groupname are saved functions.
     """
-    with File(filename, "r") as f:
-        group = f[groupname]
-        keys = group.keys()
+    
+    saved_functions = []
+    with File(filename, "r",) as f:
+        f._ErrorCheck = False
+        grp = f[groupname]
         
-        saved_functions = []
-        for key in keys:
-            dataset = group[key]
-            saved_functions += [SavedFunction(dataset),]
+        if grp._check_h5scripting_id("functions_group"):
+
+            keys = grp.keys()
+            
+            for key in keys:
+                dataset = grp[key]
+                if dataset._check_h5scripting_id("function"):
+                    saved_functions += [SavedFunction(dataset),]
 
     return saved_functions
+
+def list_all_saved_functions(filename, groupname='saved_functions'):
+    """
+    returns all the saved functions in the group deined by groupname as 
+    a list of the form:
+    
+    [saved_function, ]
+    
+    This assumes that all of the datasets in groupname are saved functions.
+    """
+    
+    saved_functions = get_all_saved_functions(filename, groupname=groupname)
+
+    datalist = []
+    for function in saved_functions:
+        docstring = ""
+
+        # Build string for data in this group
+        docstring += "FUNCTION DATASET: %s\n\n"%function.name
+        docstring += "FUNCTION NAME: %s\n\n"%function.function_name
+
+        docstring += "FUNCTION DOCSTRING:%s\n"%function.function_docstring
+        
+                    
+        docstring += "-------------------------------------------------"
+
+        datalist += [docstring,]
+        
+
+    return datalist
+
 
 def list_all_saved_data(filename, groupname=None):
     """
@@ -741,7 +778,8 @@ def list_all_saved_data(filename, groupname=None):
 
     func = cls()
 
-    with File(filename, "r", ErrorCheck=False) as f:
+    with File(filename, "r") as f:
+        f._ErrorCheck = False
         grp = f if groupname is None else f[groupname]
         grp.visititems(func)
 
