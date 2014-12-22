@@ -16,7 +16,348 @@ import sys
 import ast
 
 import h5py
+import h5py._hl.dataset 
+import numpy
 
+# -----------------------------------------------------------------------------
+#
+# START Override h5py objects
+#
+# -----------------------------------------------------------------------------
+
+class HLObject(object):
+    """
+    This adds functionality to every class below, as they are all ansesters
+    of the h5py HLObject class.  Maybe there is a better way of doing this
+    where I override HLObject and don't have to specifiy anything, but I didn't
+    see a way to do this.
+    
+    Here we allow the easy attachment of docstrings and labeling of
+    __h5scripting__ types
+    """
+
+    @property
+    def docstring(self):
+        return self.attrs['__h5scripting__doc__']
+
+    @docstring.setter
+    def docstring(self, value):
+        self.attrs['__h5scripting__doc__'] = value
+
+    @property
+    def h5scripting_id(self):
+        return self.attrs['__h5scripting__']
+
+    @h5scripting_id.setter
+    def h5scripting_id(self, value):
+        self.attrs['__h5scripting__'] = value
+
+    def _check_h5scripting_id(self, type_string):
+        valid = ('__h5scripting__doc__' in self.attrs and
+                 '__h5scripting__' in self.attrs and
+                 self.attrs['__h5scripting__'] == type_string)
+        return valid
+
+    def _valid_h5scripting_object(self, type_string, throw_error=False):
+        """
+        Looks for the __h5scripting__ attribute in h5scripting_obj and if present
+        verifies that it matches type_string
+        
+        h5scripting_obj generally will be an h5py group, file, or dataset
+        
+        throw_error : if true, will throw a type error
+        """
+    
+        # Don't do anything if _ErrorCheck is off
+        if not self._ErrorCheck:
+            return True
+
+        valid = self._check_h5scripting_id(type_string)
+        
+        if throw_error and not valid:
+            raise TypeError('not a valid h5scripting %s: __h5scripting__  or __h5scripting__doc__ attribute missing or invalid'%type_string)             
+    
+        return valid
+
+
+class Dataset(HLObject, h5py.Dataset):
+    def __init__(self, bind, h5scripting_id = "dataset", ErrorCheck=True):
+        super().__init__(bind)
+        
+        # This dataset should already have been created and be fully valid
+        # verify that this is the case
+        self._ErrorCheck = ErrorCheck
+        self._valid_h5scripting_object(h5scripting_id, throw_error = True)
+
+class GroupMixins():
+    def create_group(self, name, 
+                 docstring = "", h5scripting_id = "group"):
+        """ Create and return a new h5scripting managed subgroup.
+
+        Name may be absolute or relative.  Fails if the target name already
+        exists.
+
+        Accepts docstring = "", h5scripting_id = "group"
+        """
+
+        name, lcpl = self._e(name, lcpl=True)
+        gid = h5py.h5g.create(self.id, name, lcpl=lcpl)
+        grp = Group(gid, ErrorCheck=False)
+
+        # if possible tag the group
+        grp.h5scripting_id = h5scripting_id
+            
+        if "__h5scripting__doc__" not in grp.attrs or docstring != '':
+            grp.docstring = docstring
+        
+        return grp
+
+    def create_dataset(self, name, shape=None, dtype=None, data=None, 
+                       docstring = "", h5scripting_id = "dataset", **kwds):
+        """ Create a new h5scripting managed HDF5 dataset
+
+        name
+            Name of the dataset (absolute or relative).  Provide None to make
+            an anonymous dataset.
+        shape
+            Dataset shape.  Use "()" for scalar datasets.  Required if "data"
+            isn't provided.
+        dtype
+            Numpy dtype or string.  If omitted, dtype('f') will be used.
+            Required if "data" isn't provided; otherwise, overrides data
+            array's dtype.
+        data
+            Provide data to initialize the dataset.  If used, you can omit
+            shape and dtype arguments.
+
+        Keyword-only arguments:
+
+        chunks
+            (Tuple) Chunk shape, or True to enable auto-chunking.
+        maxshape
+            (Tuple) Make the dataset resizable up to this shape.  Use None for
+            axes you want to be unlimited.
+        compression
+            (String) Compression strategy.  Legal values are 'gzip', 'szip',
+            'lzf'.  Can also use an integer in range(10) indicating gzip.
+        compression_opts
+            Compression settings.  This is an integer for gzip, 2-tuple for
+            szip, etc.
+        scaleoffset
+            (Integer) Enable scale/offset filter for (usually) lossy
+            compression of integer or floating-point data. For integer
+            data, the value of scaleoffset is the number of bits to
+            retain (pass 0 to let HDF5 determine the minimum number of
+            bits necessary for lossless compression). For floating point
+            data, scaleoffset is the number of digits after the decimal
+            place to retain; stored values thus have absolute error
+            less than 0.5*10**(-scaleoffset).
+        shuffle
+            (T/F) Enable shuffle filter.
+        fletcher32
+            (T/F) Enable fletcher32 error detection. Not permitted in
+            conjunction with the scale/offset filter.
+        fillvalue
+            (Scalar) Use this value for uninitialized parts of the dataset.
+        track_times
+            (T/F) Enable dataset creation timestamps.
+
+        Accepts docstring = "", h5scripting_id = "group"
+        """
+         
+        dsid = h5py._hl.dataset.make_new_dset(self, shape, dtype, data, **kwds)
+        dset = Dataset(dsid, ErrorCheck=False)
+        if name is not None:
+            self[name] = dset
+
+        # if possible tag the group
+        dset.h5scripting_id = h5scripting_id
+            
+        if "__h5scripting__doc__" not in dset.attrs or docstring != '':
+            dset.docstring = docstring
+        
+        return dset
+
+    def require_dataset(self, name, shape, dtype, exact=False, 
+                        docstring = "", h5scripting_id = "group", **kwds):
+        """ Open a dataset, creating it if it doesn't exist.
+
+        If keyword "exact" is False (default), an existing dataset must have
+        the same shape and a conversion-compatible dtype to be returned.  If
+        True, the shape and dtype must match exactly.
+
+        Other dataset keywords (see create_dataset) may be provided, but are
+        only used if a new dataset is to be created.
+
+        Raises TypeError if an incompatible object already exists, or if the
+        shape or dtype don't match according to the above rules.
+
+        Accepts docstring = "", h5scripting_id = "group"
+        """
+
+        if not name in self:
+            return self.create_dataset(name, 
+                                       docstring = docstring, 
+                                       h5scripting_id = h5scripting_id,
+                                       *(shape, dtype), **kwds)
+
+        dset = self[name]
+        if not isinstance(dset, Dataset):
+            raise TypeError("Incompatible object (%s) already exists" % dset.__class__.__name__)
+
+        if not shape == dset.shape:
+            raise TypeError("Shapes do not match (existing %s vs new %s)" % (dset.shape, shape))
+
+        if exact:
+            if not dtype == dset.dtype:
+                raise TypeError("Datatypes do not exactly match (existing %s vs new %s)" % (dset.dtype, dtype))
+        elif not numpy.can_cast(dtype, dset.dtype):
+            raise TypeError("Datatypes cannot be safely cast (existing %s vs new %s)" % (dset.dtype, dtype))
+
+        return dset
+
+    def require_group(self, name, docstring = "", h5scripting_id = "group"):
+        """ Return a group, creating it if it doesn't exist.
+
+        TypeError is raised if something with that name already exists that
+        isn't a group.
+        
+        Accepts docstring = "", h5scripting_id = "group"
+        """
+
+        if not name in self:
+            return self.create_group(name, 
+                                     docstring = docstring, 
+                                     h5scripting_id = h5scripting_id)
+        grp = self[name]
+        grp.docstring = docstring
+        grp.h5scripting_id = h5scripting_id
+        
+        if not isinstance(grp, Group):
+            raise TypeError("Incompatible object (%s) already exists" % grp.__class__.__name__)
+        return grp
+
+    def getitem(self, name, h5scripting_id = None):
+        """ Open an object in the file """
+        if isinstance(name, h5py.h5r.Reference):
+            oid = h5py.h5r.dereference(name, self.id)
+            if oid is None:
+                raise ValueError("Invalid HDF5 object reference")
+        else:
+            oid = h5py.h5o.open(self.id, self._e(name), lapl=self._lapl)
+
+        otype = h5py.h5i.get_type(oid)
+        if h5scripting_id is None:
+            if otype == h5py.h5i.GROUP:
+                return Group(oid, ErrorCheck = self._ErrorCheck)
+            elif otype == h5py.h5i.DATASET:
+                return Dataset(oid, ErrorCheck = self._ErrorCheck)
+            elif otype == h5py.h5i.DATATYPE:
+                return h5py.datatype.Datatype(oid)
+            else:
+                raise TypeError("Unknown object type")
+        else: # New case to allow different h5scripting_id tags
+            if otype == h5py.h5i.GROUP:
+                return Group(oid, ErrorCheck = self._ErrorCheck, h5scripting_id = h5scripting_id)
+            elif otype == h5py.h5i.DATASET:
+                return Dataset(oid, ErrorCheck = self._ErrorCheck, h5scripting_id = h5scripting_id)
+            elif otype == h5py.h5i.DATATYPE:
+                return h5py.datatype.Datatype(oid)
+            else:
+                raise TypeError("Unknown object type")
+            
+        
+
+    def __getitem__(self, name):
+        """ Open an object in the file """
+        # Move this code into getitem to allow desired kw argument to be passed
+        return self.getitem(name)
+
+class Group(GroupMixins, HLObject, h5py.Group):
+    def __init__(self, bind, h5scripting_id = "group", ErrorCheck=True):
+        super().__init__(bind)
+        
+        # This group should already have been created and be fully valid
+        # verify that this is the case
+        self._ErrorCheck = ErrorCheck
+        self._valid_h5scripting_object(h5scripting_id, throw_error = True)
+
+# The operation of this relies on the resolution order going from
+# HLObject to h5py.File to Group before h5py.Group (which is an ancestor of 
+# h5py.File)
+class File(GroupMixins, HLObject, h5py.File):
+    def __init__(self, name, mode=None, 
+                 docstring = "", h5scripting_id = "file", ErrorCheck = True, 
+                 *args, **kwargs):
+        super().__init__(name, mode=mode, *args, **kwargs)
+
+        self._ErrorCheck = ErrorCheck
+        
+        # When in read only mode, verify that this is a h5scripting manged file
+        # when in all writing modes, make it a h5scripting managed file
+        if mode in ("r", "r+"):
+            self._valid_h5scripting_object(h5scripting_id, throw_error = True)
+        else:
+            # Disable error checking
+            self._ErrorCheck = False
+            
+            self.h5scripting_id = h5scripting_id
+            
+            # If passed an interesting string, or if doc is absent
+            if docstring != '' or '__h5scripting__doc__' not in self.attrs:
+                self.docstring = docstring
+                
+            # Enable Error Checking
+            self._ErrorCheck = True
+
+    @property
+    def attrs(self):
+        """ Attributes attached to this object """
+        # hdf5 complains that a file identifier is an invalid location for an
+        # attribute. Instead of self, pass the root group to AttributeManager:
+        from h5py._hl import attrs
+        
+        # For archane reasons, this code cannot run unless error checking is
+        # turned off.
+        ErrorCheck = self._ErrorCheck
+        self._ErrorCheck = False
+        ret = attrs.AttributeManager(self['/'])
+        self._ErrorCheck = ErrorCheck
+        return ret
+               
+# -----------------------------------------------------------------------------
+#
+# END Override h5py objects
+#
+# -----------------------------------------------------------------------------
+
+def get_all_data(filename, groupname):
+    """
+    Gets data from an existing h5 file.
+
+    filename : h5 file to use
+
+    groupname : group to use
+    
+    only datasets with the "__h5scripting__" attribute set to 'dataset' are accepted
+
+    returns : a dictionary such as {
+        "Data1": DataObject1,
+        "Data2": DataObject2, 
+        ...}
+        where the names are the h5 dataset names.
+    """
+
+    h5data = {}
+    with File(filename, 'r') as f:
+        grp = f[groupname]
+
+        for dataset in grp.values():
+            key = dataset.name
+            key = key.split("/")[-1]
+            h5data[key] = dataset.value
+
+    return h5data
 
 def exec_in_namespace(code, namespace):
     if sys.version < '3':
@@ -26,68 +367,7 @@ def exec_in_namespace(code, namespace):
             exec_func = __builtins__['exec']
         else:
             exec_func = getattr(__builtins__, 'exec')
-        exec_func(code, namespace)
-
-
-def add_data(filename, groupname, data, docstring = None):
-    """
-    Adds data to a new or existing h5 file.
-
-    filename : h5 file to use
-
-    groupname : group to add data to.  If group exists it will be deleted first.
-
-    data : a dictionary such as {"Data1": DataObject1, "Data2": DataObject2, ...}
-        where the names Data1 and Data2 will be created created in group
-    
-    docstring : if passed, will be added as an attribute to the group
-        this is intended to be a string note describing the contents
-        of a folder, for example,  but it could be anything.
-    
-    Adds an attribute "__h5scripting" to all data added to allow for
-    safe batch readout of the data.
-    """
-
-    with h5py.File(filename) as f:
-        try:
-            del f[groupname]
-        except KeyError:
-            pass
-
-        group = f.require_group(groupname)
-        if docstring is not None:
-            group.attrs['group_docstring'] = docstring
-
-        for key, val in data.items():
-            dataset = group.create_dataset(str(key), data=val, compression="gzip")
-            dataset.attrs['__h5scripting_data'] = True
-
-            
-def get_data(filename, groupname):
-    """
-    Gets data from an existing h5 file.
-
-    filename : h5 file to use
-
-    groupname : group to use
-    
-    only datasets with the "__h5scripting_data" attribute set to True are accepted
-
-    returns : a dictionary such as {"Data1": DataObject1, "Data2": DataObject2, ...}
-        where the names are the h5 dataset names.
-    """
-
-    h5data = {}
-    with h5py.File(filename, 'r') as f:
-        grp = f[groupname]
-        for dataset in grp.values():
-            # First check that this is a valid data.
-            if '__h5scripting_data' in dataset.attrs and dataset.attrs['__h5scripting_data']:
-                key = dataset.name
-                key = key.split("/")[-1]
-                h5data[key] = dataset.value
-
-    return h5data
+        exec_func(code, namespace) 
 
     
 class attached_function(object):
@@ -198,19 +478,19 @@ class attached_function(object):
         # Remove initial indentation from the source:
         function_source = '\n'.join(line[indentation:] for line in function_lines)
 
-        with h5py.File(self.filename) as f:
-            group = f.require_group(self.groupname)
+        with File(self.filename) as f:
+            group = f.require_group(self.groupname,  h5scripting_id = 'functions_group')
             try:
                 del group[name]
             except KeyError:
                 pass
-            dataset = group.create_dataset(name, data=function_source)
-            dataset.attrs['function_name'] = function_name
-            dataset.attrs['function_docstring'] = function_docstring
-            dataset.attrs['function_signature'] = function_signature
-            dataset.attrs['function_args'] = function_args
-            dataset.attrs['function_kwargs'] = function_kwargs
-            dataset.attrs['__h5scripting_function'] = True
+            dataset = group.create_dataset(name, data=function_source,
+                                           docstring = function_docstring,
+                                           h5scripting_id = 'function')
+            dataset.attrs['__h5scripting__function_name__'] = function_name
+            dataset.attrs['__h5scripting__function_signature__'] = function_signature
+            dataset.attrs['__h5scripting__function_args__'] = function_args
+            dataset.attrs['__h5scripting__function_kwargs__'] = function_kwargs
             
             saved_function = SavedFunction(dataset)
         return saved_function
@@ -252,11 +532,11 @@ class SavedFunction(object):
         import functools
         
         function_source = dataset.value
-        function_name = dataset.attrs['function_name']
-        function_docstring = dataset.attrs['function_docstring']
-        function_signature = dataset.attrs['function_signature']
-        function_args = ast.literal_eval(dataset.attrs['function_args'])
-        function_kwargs = ast.literal_eval(dataset.attrs['function_kwargs'])
+        function_docstring = dataset.docstring
+        function_name = dataset.attrs['__h5scripting__function_name__']
+        function_signature = dataset.attrs['__h5scripting__function_signature__']
+        function_args = ast.literal_eval(dataset.attrs['__h5scripting__function_args__'])
+        function_kwargs = ast.literal_eval(dataset.attrs['__h5scripting__function_kwargs__'])
         
         # Exec the function definition to get the function object:
         sandbox_namespace = {}
@@ -366,11 +646,9 @@ def get_saved_function(filename, name, groupname='saved_functions'):
     returns saved_function
     """
 
-    with h5py.File(filename, "r") as f:
-        group = f[groupname]
-        dataset = group[name]
-        if '__h5scripting_function' not in dataset.attrs or not dataset.attrs['__h5scripting_function']:
-            raise ValueError('Specified dataset does not represent a function saved with h5scripting.')
+    with File(filename, "r") as f:
+        grp = f.getitem(groupname, h5scripting_id="functions_group")
+        dataset = grp.getitem(name, h5scripting_id="function")
         saved_function = SavedFunction(dataset)
     
     return saved_function
@@ -385,15 +663,88 @@ def get_all_saved_functions(filename, groupname='saved_functions'):
     
     This assumes that all of the datasets in groupname are saved functions.
     """
-    with h5py.File(filename, "r") as f:
+    with File(filename, "r") as f:
         group = f[groupname]
         keys = group.keys()
         
         saved_functions = []
         for key in keys:
             dataset = group[key]
-            if '__h5scripting_function' in dataset.attrs and dataset.attrs['__h5scripting_function']:
-                saved_functions += [SavedFunction(dataset),]
+            saved_functions += [SavedFunction(dataset),]
 
     return saved_functions
 
+def list_all_saved_data(filename, groupname=None):
+    """
+    returns the paths of all saved data, the metadata, and the names of the
+    data, and the basic information (shape, type) about the data
+    
+    This function is designed for interactive operation when you have an h5
+    file and want to be reminded what data to use to make a figure    
+    
+    [string1, ]
+    
+    each string looks like
+    
+        group name
+        group docstring
+        
+        data1 : shape, type
+            data1 docstring
+        data2 : shape, type
+            data2 docstring
+        ....
+        
+        docstring
+    
+    This shows the importance of writing a good docstring to inform the user
+    what each of the data really are.    
+    
+    This assumes that all of the datasets in groupname are saved functions.
+    
+    This function is mostly designed for intractive use to inspect the data in
+    the file to make it more simple to write functions.
+    """
+
+    class cls(object):
+        """
+        provides a callable for grp.visititems to call
+        """
+        def __init__(self):
+            self.datalist = []
+        
+        def __call__(self, name, obj):
+            """
+            obj will either be a file, group, or dataset object
+            """
+            
+            if obj._check_h5scripting_id("group"):
+                docstring = ""
+    
+                # Build string for data in this group
+                docstring += "GROUP: %s\n\n"%name
+    
+                docstring += "GROUP DOCSTRING:%s\n"%(obj.attrs['__h5scripting__doc__'])
+                
+                # iterate over datasets in group
+                for dataset in obj.values():
+                    if dataset._check_h5scripting_id("dataset"):
+                        docstring += "DATASET %s: %s, %s\n"%(
+                            dataset.name.split("/")[-1],
+                            str(dataset.value.shape),
+                            str(dataset.value.dtype))
+                        docstring += "\t%s\n"%dataset.attrs['__h5scripting__doc__']
+                            
+                docstring += "-------------------------------------------------"
+    
+                self.datalist += [docstring,]
+
+    func = cls()
+
+    with File(filename, "r", ErrorCheck=False) as f:
+        grp = f if groupname is None else f[groupname]
+        grp.visititems(func)
+
+    return func.datalist
+        
+    
