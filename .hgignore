@@ -1,0 +1,2 @@
+syntax: glob
+h5scripting/__version__.py
