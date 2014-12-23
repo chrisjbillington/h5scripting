@@ -227,9 +227,9 @@ class GroupMixins():
 
         if not name in self:
             return self.create_group(name, 
-                                     docstring = docstring, 
-                                     h5scripting_id = h5scripting_id)
-        grp = self[name]
+                                     docstring=docstring, 
+                                     h5scripting_id=h5scripting_id)
+        grp = self.getitem(name, h5scripting_id=h5scripting_id)
         grp.docstring = docstring
         grp.h5scripting_id = h5scripting_id
         
