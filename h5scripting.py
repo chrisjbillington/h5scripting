@@ -331,34 +331,6 @@ class File(GroupMixins, HLObject, h5py.File):
 #
 # -----------------------------------------------------------------------------
 
-def get_all_data(filename, groupname):
-    """
-    Gets data from an existing h5 file.
-
-    filename : h5 file to use
-
-    groupname : group to use
-    
-    only datasets with the "__h5scripting__" attribute set to 'dataset' are accepted
-
-    returns : a dictionary such as {
-        "Data1": DataObject1,
-        "Data2": DataObject2, 
-        ...}
-        where the names are the h5 dataset names.
-    """
-
-    h5data = {}
-    with File(filename, 'r') as f:
-        grp = f[groupname]
-
-        for dataset in grp.values():
-            key = dataset.name
-            key = key.split("/")[-1]
-            h5data[key] = dataset.value
-
-    return h5data
-
 def exec_in_namespace(code, namespace):
     if sys.version < '3':
         exec("""exec code in namespace""")
@@ -666,17 +638,12 @@ def get_all_saved_functions(filename, groupname='saved_functions'):
     
     saved_functions = []
     with File(filename, "r",) as f:
-        f._ErrorCheck = False
-        grp = f[groupname]
+        grp = f.getitem(groupname, h5scripting_id="functions_group")
         
-        if grp._check_h5scripting_id("functions_group"):
-
-            keys = grp.keys()
-            
-            for key in keys:
-                dataset = grp[key]
-                if dataset._check_h5scripting_id("function"):
-                    saved_functions += [SavedFunction(dataset),]
+        grp._ErrorCheck = False
+        for dataset in grp.values():
+            if dataset._check_h5scripting_id("function"):
+                saved_functions += [SavedFunction(dataset),]
 
     return saved_functions
 
@@ -710,6 +677,35 @@ def list_all_saved_functions(filename, groupname='saved_functions'):
 
     return datalist
 
+def get_all_data(filename, groupname):
+    """
+    Gets data from an existing h5 file.
+
+    filename : h5 file to use
+
+    groupname : group to use
+    
+    only datasets with the "__h5scripting__" attribute set to 'dataset' are accepted
+
+    returns : a dictionary such as {
+        "Data1": DataObject1,
+        "Data2": DataObject2, 
+        ...}
+        where the names are the h5 dataset names.
+    """
+
+    h5data = {}
+    with File(filename, 'r') as f:
+        grp = f[groupname]
+
+        grp._ErrorCheck = False
+        for dataset in grp.values():
+            if dataset._check_h5scripting_id("dataset"):
+                key = dataset.name
+                key = key.split("/")[-1]
+                h5data[key] = dataset.value
+
+    return h5data
 
 def list_all_saved_data(filename, groupname=None):
     """
