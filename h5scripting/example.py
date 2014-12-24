@@ -1,14 +1,48 @@
-from h5scripting import add_data, attached_function, get_saved_function, get_all_saved_functions
+import h5scripting
+import numpy as np
 
-from pylab import *
+#
+# Define the file name and provide a docstring for the whole file
+# 
 
-h5_filename = 'test.h5'
+FileDocString = """
+This file contains the data and scripts to showcase the abiities of the
+h5scripting package
+"""
 
-x = linspace(0,10,1000)
-y = sin(x)
+h5_filename = "example.hdf5"
+
+#
+# Create some test data and attach it to the file.  Include docstrings
+# for the group we are packing this into and also each of the arrays
+# 
+
+GroupName = "simulations/ExampleData"
+
+DocString = r"""
+This group contains some example data used in h5scripting
+"""
+
+x = np.linspace(0,10,1000)
+y = np.sin(x)
 
 # make an h5 file to test on:
-add_data(h5_filename, 'data', dict(x=x, y=y))
+with h5scripting.File(h5_filename) as f:
+    
+    # If we are running this a second time, clean up the existing group
+    # could also do this by deleting the data one-by-one
+    try: del f[GroupName]
+    except: pass
+    
+    grp = f.require_group(GroupName, docstring = DocString)
+    
+    # Second order transition data
+    grp["x"] = x
+    grp["x"].docstring = "x: domain"
+
+    grp["y"] = y
+    grp["y"].docstring = "y: np computed sin(x)"
+
     
 # Save a function to the h5 file
 
@@ -21,42 +55,76 @@ add_data(h5_filename, 'data', dict(x=x, y=y))
 
 # This decorator modifies the function to receive the h5 filename as its
 # first argument, and to execute in an empty namespace.
+#
+# This would also be possible with
+# saved_func = h5scripting.attach_function(plot_func, 
+#                                          h5name, 
+#                                          args=['testing calling plot_func with saved args'], 
+#                                          kwargs={'xlabel': 'this is a saved keyword arg'}
+#                                         )
+# 
+# The approach above does not modify the calling convention of plot_func
+# and instead saved_func is the decoraited function
 
-@attached_function(h5_filename, args=['testing calling plot_func with saved args'], kwargs={'xlabel': 'this is a saved keyword arg'})
-def plot_func(h5_filename, title, xlabel='xlabel'):
+@h5scripting.attached_function(h5_filename, args=['testing calling plot_func with saved args'], kwargs={'xlabel': 'this is a saved keyword arg'})
+def plot_func(h5_filename, title, xlabel='xlabel', groupname="", pdfName=None):
+    """
+    Plots the example data.  Notice that this docstring is stored as a 
+    seperate docstring describing the function in the hdf5 file
+    """
+    
     import h5scripting
-    import pylab as pl
+    import matplotlib.pyplot as plt
     
-    data = h5scripting.get_data(h5_filename)  
-    
-    pl.title(title)
-    pl.xlabel(xlabel)
-    pl.plot(data['x'], data['y'])
-    return True
+    data = h5scripting.get_all_data(h5_filename, groupname) 
 
+    fig = plt.figure(1)
+    ax = fig.add_subplot(1,1,1)
+    ax.plot(data['x'], data['y'])
+
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    
+    # Generate a PDF file if requested
+    if pdfName is not None:
+        mpl.pyplot.savefig(pdfName, transparent=True)
+    
+    plt.show()
+    plt.clf()
+    
+    return True
     
 # Below we call plot_func both directly, and after retrieving it from 
 # the h5 file. Both should have identical behaviour.
 
 
 
-# Call plot_func directly. We don't provide the first
+# You could plot_func directly. We don't provide the first
 # argument, the h5 filename, as it is provided automatically:
-plot_func()
-show()
-clf()
+#
+# plot_func(groupname=GroupName)
 
+#
+# Now picture that you only have the h5 file that your friends sent you
+#
 
+# You can list the data within the file with documentation
+for doc in h5scripting.list_all_saved_data(h5_filename):
+    print(doc)
+
+# You can list the functions attached to the file with documetation
+for doc in h5scripting.list_all_saved_functions(h5_filename):
+    print(doc)
+
+    
 # Here's how we retrieve plot_func from the h5 file. We're leaving
 # the 'groupname' keyword argument as default, so
 # get_saved_function() will look in the default group: 'saved_functions'.
-retreived_plot_func = get_saved_function(h5_filename, 'plot_func')
+retreived_plot_func = h5scripting.get_saved_function(h5_filename, 'plot_func')
 
-# Call the retrieved function. Again, we don't provide the first
+# Call the retrieved function. We don't provide the first
 # argument:
-retreived_plot_func(xlabel='this is a custom keyword arg')
-show()
+retreived_plot_func(groupname=GroupName, xlabel='this is a custom keyword arg')
 
 # print out the saved function:
-import pprint
-pprint.pprint(get_all_saved_functions(h5_filename))
+print(retreived_plot_func)
